@@ -154,6 +154,12 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
       PUBLIC
       ${WASMEDGE_TENSORFLOW_DEPS_TFLITE_LIB}
     )
+    if(DEFINED WASMEDGE_TENSORFLOW_DEPS_TFLITE_FLEX_PATH)
+      target_link_libraries(wasmedgePluginWasiNN
+        PUBLIC
+        ${WASMEDGE_TENSORFLOW_DEPS_TFLITE_FLEX_PATH}
+      )
+    endif()
   else()
     # Add the other backends here.
     message(FATAL_ERROR "WASI-NN: backend ${BACKEND} not found or unimplemented.")
