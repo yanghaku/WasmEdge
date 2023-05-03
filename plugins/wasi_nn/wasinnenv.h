@@ -17,6 +17,11 @@
 
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE
 #include "tensorflow/lite/c/c_api.h"
+#if __has_include("tensorflow/lite/delegates/gpu/delegate.h")
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#else
+extern "C" void TfLiteGpuDelegateV2Delete(TfLiteDelegate *);
+#endif // __has_include("tensorflow/lite/c/c_api.h")
 #endif
 
 namespace WasmEdge {
@@ -78,6 +83,9 @@ public:
     if (TFLiteMod) {
       TfLiteModelDelete(TFLiteMod);
     }
+    if (TfLiteGPUDelegate) {
+      TfLiteGpuDelegateV2Delete(TfLiteGPUDelegate);
+    }
 #endif
   }
 
@@ -95,6 +103,7 @@ public:
 #endif
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE
   TfLiteModel *TFLiteMod = nullptr;
+  TfLiteDelegate *TfLiteGPUDelegate = nullptr;
 #endif
 };
 

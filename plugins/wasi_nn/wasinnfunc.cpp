@@ -20,6 +20,13 @@
 
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE
 #include "tensorflow/lite/c/c_api.h"
+#if __has_include("tensorflow/lite/delegates/gpu/delegate.h")
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#else
+typedef struct TfLiteGpuDelegateOptionsV2 TfLiteGpuDelegateOptionsV2;
+extern "C" TfLiteDelegate *
+TfLiteGpuDelegateV2Create(const TfLiteGpuDelegateOptionsV2 *);
+#endif // __has_include("tensorflow/lite/c/c_api.h")
 #endif
 
 namespace WasmEdge {
@@ -66,7 +73,9 @@ Expect<uint32_t> WasiNNLoad::body(const Runtime::CallingFrame &Frame,
   const auto Device = static_cast<WASINN::Device>(Target);
   const std::string DeviceName = findDevice(Device);
   if (unlikely(DeviceName.length() == 0 &&
-               (Encoding != static_cast<uint32_t>(WASINN::Backend::PyTorch) ||
+               ((Encoding != static_cast<uint32_t>(WASINN::Backend::PyTorch) &&
+                 Encoding !=
+                     static_cast<uint32_t>(WASINN::Backend::TensorflowLite)) ||
                 Device != WASINN::Device::GPU))) {
     spdlog::error("[WASI-NN] Only support CPU target and Pytorch GPU target.");
     return static_cast<uint32_t>(WASINN::ErrNo::InvalidArgument);
@@ -331,6 +340,16 @@ Expect<uint32_t> WasiNNLoad::body(const Runtime::CallingFrame &Frame,
     Env.NNGraph.emplace_back(static_cast<WASINN::Backend>(Encoding));
     auto &Graph = Env.NNGraph.back();
 
+    // Check GPU device.
+    if (Device == WASINN::Device::GPU) {
+      // create GPU delegate with default options.
+      Graph.TfLiteGPUDelegate = TfLiteGpuDelegateV2Create(nullptr);
+      if (Graph.TfLiteGPUDelegate == nullptr) {
+        spdlog::error("[WASI-NN] Cannot create TFLite GPU delegate.");
+        return static_cast<uint32_t>(WASINN::ErrNo::InvalidArgument);
+      }
+    }
+
     Graph.TFLiteMod = TfLiteModelCreate(BinPtr, BinLen);
     if (unlikely(Graph.TFLiteMod == nullptr)) {
       spdlog::error("[WASI-NN] Cannot import TFLite model");
@@ -415,10 +434,13 @@ Expect<uint32_t> WasiNNInitExecCtx::body(const Runtime::CallingFrame &Frame,
     }
 
     Env.NNContext.emplace_back(Env.NNGraph[GraphId]);
-    const auto Graph = Env.NNGraph[GraphId];
+    const auto &Graph = Env.NNGraph[GraphId];
     auto &NewContext = Env.NNContext.back();
     auto *TFLiteOps = TfLiteInterpreterOptionsCreate();
     TfLiteInterpreterOptionsSetNumThreads(TFLiteOps, 2);
+    if (Graph.TfLiteGPUDelegate) {
+      TfLiteInterpreterOptionsAddDelegate(TFLiteOps, Graph.TfLiteGPUDelegate);
+    }
     NewContext.TFLiteInterp =
         TfLiteInterpreterCreate(Graph.TFLiteMod, TFLiteOps);
     TfLiteInterpreterOptionsDelete(TFLiteOps);
