@@ -9,6 +9,9 @@
 #ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE
 #include "tensorflow/lite/c/c_api.h"
 #include <vector>
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+#include "tensorflow/lite/delegates/gpu/delegate.h"
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
 #endif
 
 namespace WasmEdge::Host::WASINN {
@@ -25,6 +28,9 @@ struct Graph {
     }
   }
   TfLiteModel *TFLiteMod = nullptr;
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+  Device TFLiteDevice = Device::CPU;
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
 };
 
 struct Context {
@@ -34,9 +40,17 @@ public:
     if (TFLiteInterp) {
       TfLiteInterpreterDelete(TFLiteInterp);
     }
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+    if (TFLiteGPUDelegate) {
+      TfLiteGpuDelegateV2Delete(TFLiteGPUDelegate);
+    }
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
   }
   size_t GraphId;
   TfLiteInterpreter *TFLiteInterp = nullptr;
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+  TfLiteDelegate *TFLiteGPUDelegate = nullptr;
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
 };
 #else
 struct Graph {};

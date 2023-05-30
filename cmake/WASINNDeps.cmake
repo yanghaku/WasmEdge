@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # SPDX-FileCopyrightText: 2019-2022 Second State INC
 
+# Change "," into ";" to support <backend_name1>,<backend_name2>
+string(REPLACE "," ";" WASMEDGE_PLUGIN_WASI_NN_BACKEND "${WASMEDGE_PLUGIN_WASI_NN_BACKEND}")
+
 # Add backends building flags.
 foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
   string(TOLOWER ${BACKEND} BACKEND)
@@ -109,6 +112,32 @@ foreach(BACKEND ${WASMEDGE_PLUGIN_WASI_NN_BACKEND})
     list(APPEND WASMEDGE_PLUGIN_WASI_NN_DEPS
       ${WASMEDGE_TENSORFLOW_DEPS_TFLITE_LIB}
     )
+
+    # Use `-DWASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_DELEGATE=<delegate_name1>,<delegate_name2>`
+    string(REPLACE "," ";" TFLITE_DELEGATE_LIST "${WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_DELEGATE}")
+    # Setup Tensorflow-lite delegates.
+    foreach(DELEGATE ${TFLITE_DELEGATE_LIST})
+      string(TOLOWER ${DELEGATE} DELEGATE)
+
+      if(DELEGATE STREQUAL "flex")
+        if(APPLE)
+          set(WASMEDGE_TENSORFLOW_DEPS_TFLITE_FLEX_LIB "libtensorflowlite_flex.dylib")
+        elseif(UNIX)
+          set(WASMEDGE_TENSORFLOW_DEPS_TFLITE_FLEX_LIB "libtensorflowlite_flex.so")
+        endif()
+        list(APPEND WASMEDGE_PLUGIN_WASI_NN_DEPS
+          "${wasmedgetensorflowdepslite_SOURCE_DIR}/${WASMEDGE_TENSORFLOW_DEPS_TFLITE_FLEX_LIB}"
+        )
+      elseif(DELEGATE STREQUAL "gpu")
+        add_definitions(-DWASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU)
+      else()
+        # Add other delegates here, such as nnapi, xnnpack
+        message(FATAL_ERROR "WASI-NN: TensorFlow-Lite delegate `${DELEGATE}` not found or unimplemented.")
+      endif()
+
+      message(STATUS "WASI-NN: Add TensorFlow-Lite `${DELEGATE}` delegate.")
+    endforeach(DELEGATE)
+
   else()
     # Add the other backends here.
     message(FATAL_ERROR "WASI-NN: backend ${BACKEND} not found or unimplemented.")

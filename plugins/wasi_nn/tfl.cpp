@@ -13,9 +13,19 @@ namespace WasmEdge::Host::WASINN::TensorflowLite {
 Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
                            Span<const Span<uint8_t>> Builders,
                            WASINN::Device Device, uint32_t &GraphId) noexcept {
-  if ((Device != WASINN::Device::CPU)) {
-    spdlog::error("[WASI-NN] TensorflowLite Only support CPU target.");
-    return WASINN::ErrNo::InvalidArgument;
+  if (Device != WASINN::Device::CPU) {
+    if (Device == WASINN::Device::GPU) {
+#ifndef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+      spdlog::error("[WASI-NN] TensorflowLite GPU target is not built. use "
+                    "-DWASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_DELEGATE=GPU "
+                    "to build it.");
+      return WASINN::ErrNo::InvalidArgument;
+#endif // !WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+    } else {
+      spdlog::error(
+          "[WASI-NN] TensorflowLite Only support CPU and GPU target.");
+      return WASINN::ErrNo::InvalidArgument;
+    }
   }
   // The graph builder length must be 1.
   if (Builders.size() != 1) {
@@ -28,6 +38,9 @@ Expect<WASINN::ErrNo> load(WASINN::WasiNNEnvironment &Env,
   Env.NNGraph.emplace_back(WASINN::Backend::TensorflowLite);
   auto &GraphRef = Env.NNGraph.back().get<Graph>();
 
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+  GraphRef.TFLiteDevice = Device;
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
   GraphRef.TFLiteMod = TfLiteModelCreate(Weight.data(), Weight.size());
   if (unlikely(GraphRef.TFLiteMod == nullptr)) {
     spdlog::error("[WASI-NN] Cannot import TFLite model");
@@ -55,6 +68,19 @@ Expect<WASINN::ErrNo> initExecCtx(WASINN::WasiNNEnvironment &Env,
   auto &GraphRef = Env.NNGraph[CxtRef.GraphId].get<Graph>();
   auto *TFLiteOps = TfLiteInterpreterOptionsCreate();
   TfLiteInterpreterOptionsSetNumThreads(TFLiteOps, 2);
+
+#ifdef WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+  if (GraphRef.TFLiteDevice == WASINN::Device::GPU) {
+    // Create a GPU delegate with default options.
+    CxtRef.TFLiteGPUDelegate = TfLiteGpuDelegateV2Create(nullptr);
+    if (CxtRef.TFLiteGPUDelegate) {
+      TfLiteInterpreterOptionsAddDelegate(TFLiteOps, CxtRef.TFLiteGPUDelegate);
+    } else {
+      spdlog::warn("[WASI-NN] Fail to create GPU delegate, use default CPU.");
+    }
+  }
+#endif // WASMEDGE_PLUGIN_WASI_NN_BACKEND_TFLITE_GPU
+
   CxtRef.TFLiteInterp = TfLiteInterpreterCreate(GraphRef.TFLiteMod, TFLiteOps);
   TfLiteInterpreterOptionsDelete(TFLiteOps);
   if (unlikely(CxtRef.TFLiteInterp == nullptr)) {
